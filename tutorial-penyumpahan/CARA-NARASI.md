@@ -5,5 +5,7 @@ Syarat: env `GEMINI_API_KEY` di environment sesi.
 3. `python3 -m http.server 8766 &` lalu `node record2.js` (tiap langkah menunggu narasinya selesai).
 4. Buat `music.wav` (musik latar), lalu `./gabung.sh` menghasilkan `Tutorial-Dokumen-Penyumpahan-Narasi.mp4`.
 
-Tanpa merekam ulang: pakai video yang sudah ada sebagai sumber, dengan `vo/waktu.json` berisi detik mulai tiap narasi
-(diselaraskan dengan progress bar langkah di video): `VIDEO=Tutorial-Dokumen-Penyumpahan.mp4 ./gabung.sh`.
+Versi ringkas (~2 menit, dipakai sekarang) dari video yang sudah ada, tanpa merekam ulang:
+`node link.js` (kartu link bit.ly/dokumensumpah) lalu `python3 potong.py`. Skrip ini mendeteksi awal tiap langkah dari
+progress bar, memadatkan layar yang diam, menyelaraskan narasi (tempo 1,1x), dan membuat musik (`musik.py`).
+Buat ulang satu narasi saja: `ONLY=1 python3 tts.py`.

@@ -4,8 +4,11 @@ import os, json, base64, wave, urllib.request, time, pathlib
 KEY=os.environ['GEMINI_API_KEY']; MODEL=os.environ.get('GEMINI_TTS_MODEL','gemini-2.5-pro-preview-tts'); VOICE=os.environ.get('VOICE','Kore')
 STYLE=("Bacakan dengan suara perempuan penutur asli bahasa Indonesia (Jakarta), logat Indonesia yang natural dan jelas, "
        "bukan aksen asing. Nada ramah, hangat, tenang, tempo sedang seperti pemandu tutorial. Teks: ")
-out=pathlib.Path(__file__).with_name('vo'); out.mkdir(exist_ok=True); dur=[]
+out=pathlib.Path(__file__).with_name('vo'); out.mkdir(exist_ok=True)
+ONLY=[int(x) for x in os.environ.get('ONLY','').split(',') if x]  # mis. ONLY=1,5 -> buat ulang narasi 1 dan 5 saja
+dur=json.load(open(out/'durasi.json')) if ONLY else []
 for i,t in enumerate(json.load(open(pathlib.Path(__file__).with_name('narasi.json')))):
+  if ONLY and i+1 not in ONLY: continue
   body={"contents":[{"parts":[{"text":STYLE+t}]}],"generationConfig":{"responseModalities":["AUDIO"],
         "speechConfig":{"languageCode":"id-ID","voiceConfig":{"prebuiltVoiceConfig":{"voiceName":VOICE}}}}}
   for a in range(5):
@@ -15,5 +18,8 @@ for i,t in enumerate(json.load(open(pathlib.Path(__file__).with_name('narasi.jso
     except Exception as e: print('ulang',i,e); time.sleep(8*(a+1))
   pcm=base64.b64decode(json.load(r)['candidates'][0]['content']['parts'][0]['inlineData']['data'])
   with wave.open(str(out/f'{i+1:02d}.wav'),'wb') as w: w.setnchannels(1);w.setsampwidth(2);w.setframerate(24000);w.writeframes(pcm)
-  dur.append(len(pcm)/48000); print(i+1,round(dur[-1],1),'detik')
+  d=len(pcm)/48000
+  if ONLY: dur[i]=d
+  else: dur.append(d)
+  print(i+1,round(d,1),'detik')
 json.dump(dur,open(out/'durasi.json','w'))
