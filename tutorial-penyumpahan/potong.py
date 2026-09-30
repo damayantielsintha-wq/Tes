@@ -3,7 +3,7 @@ Bagian layar diam dipadatkan, tiap langkah dipercepat seperlunya agar pas dengan
 Pakai: python3 potong.py  ->  Tutorial-Dokumen-Penyumpahan-Narasi.mp4"""
 import json,subprocess,wave,numpy as np,imageio_ffmpeg
 FF=imageio_ffmpeg.get_ffmpeg_exe();SRC='Tutorial-Dokumen-Penyumpahan.mp4';OUT='Tutorial-Dokumen-Penyumpahan-Narasi.mp4'
-TEMPO=1.0;FPS=10;DIAM=1.0;SISA=0.5
+TEMPO=1.0;FPS=10;DIAM=1.0;SISA=0.5;AWAL=0.6  # AWAL: sisa jeda antara munculnya langkah dan aksi pertama
 # tahan layar: langkah -> (detik sumber yang ditahan, detik narasi mulai & selesai membahasnya)
 # langkah 8: kartu surat dengan tombol 'Ambil nomor SPS' ditahan selama penjelasan nomor SPS
 TAHAN={8:(119.5,4.8,25.0)}  # tanpa percepatan: narasi & video diputar kecepatan asli
@@ -18,7 +18,8 @@ for i in range(1,len(kn)):
 akhir_cover=(np.nonzero(kn>=kn.max()*0.9)[0][-1]+1)/FPS  # layar penutup mulai menutupi header
 DUR=len(kn)/FPS;assert len(mulai)==11,mulai
 # 2) frame aktif (ada gerakan)
-g=raw('scale=240:135,format=gray',135,240)[...,0];akt=np.r_[True,(np.abs(np.diff(g,axis=0))>10).sum((1,2))>3]
+# hanya jendela aplikasi (kolom keterangan di kanan & header diabaikan, supaya jeda 'membaca' sebelum aksi ikut terpotong)
+g=raw('crop=1480:1000:0:80,scale=240:162,format=gray',162,240)[...,0];akt=np.r_[True,(np.abs(np.diff(g,axis=0))>10).sum((1,2))>3]
 def padat(a,b,SISA=SISA,DIAM=DIAM):
   """interval [a,b) dengan jeda diam >DIAM detik dipangkas jadi SISA detik"""
   out=[];i=int(a*FPS);e=int(b*FPS);s=i
@@ -26,7 +27,8 @@ def padat(a,b,SISA=SISA,DIAM=DIAM):
     if not akt[i]:
       j=i
       while j<e and not akt[j]: j+=1
-      if (j-i)/FPS>DIAM: out.append((s/FPS,min(j,i+int(SISA*FPS))/FPS));s=j
+      sisa=AWAL if i-int(a*FPS)<5 else SISA  # jeda di awal langkah selalu dipangkas ketat
+      if (j-i)/FPS>min(DIAM,sisa): out.append((s/FPS,min(j,i+int(sisa*FPS))/FPS));s=j
       i=j
     else:i+=1
   if e>s: out.append((s/FPS,e/FPS))
@@ -51,12 +53,28 @@ for k in range(11):
       iv2=padat(batas[k],batas[k+1],ss,d);K2=sum(y-x for x,y in iv2)
       if K2<T: break
       iv,K=iv2,K2
+  def tahan_di(iv,src,h):
+    sb=[(x,min(y,src)) for x,y,*_ in iv if x<src];ss_=[(max(x,src),y) for x,y,*_ in iv if y>src]
+    return sb[:-1]+[(sb[-1][0],sb[-1][1],h)]+ss_
   if k+1 in TAHAN:
     src,c0,c1=TAHAN[k+1];iv=padat(batas[k],batas[k+1])
-    sb=[(x,min(y,src)) for x,y in iv if x<src];ss_=[(max(x,src),y) for x,y in iv if y>src]
-    Kb=sum(y-x for x,y in sb);h=max(0,(0.3+c1-vo[k][0])-Kb)
+    Kb=sum(y-x for x,y in iv if x<src)-sum(max(0,y-src) for x,y in iv if x<src<y)
+    h=max(0,(0.3+c1-vo[k][0])-Kb)
     print(f'langkah {k+1}: layar SPS tampil {Kb:.1f}s setelah awal langkah (narasi SPS mulai {0.3+c0-vo[k][0]:.1f}s), ditahan {h:.1f}s')
-    iv=sb[:-1]+[(sb[-1][0],sb[-1][1],h)]+ss_;K=sum(y-x for x,y,*_ in iv)+h
+    iv=tahan_di(iv,src,h);K+=0;K=sum(y-x for x,y,*_ in iv)+h
+  elif K<T:
+    # narasi lebih panjang dari rekaman: tahan layar di jeda diam terpanjang (bukan di awal langkah)
+    a0,b0=int(batas[k]*FPS),int(batas[k+1]*FPS);best=(0,None);i=a0
+    while i<b0 and not akt[i]: i+=1  # lewati jeda awal langkah
+    while i<b0:
+      if not akt[i]:
+        j=i
+        while j<b0 and not akt[j]: j+=1
+        if j-i>best[0]: best=(j-i,i/FPS+min(0.2,(j-i)/FPS/2))
+        i=j
+      else: i+=1
+    if best[1] and any(x<best[1]<y for x,y,*_ in iv):
+      h=T-K;iv=tahan_di(iv,best[1],h);K+=h;print(f'langkah {k+1}: layar ditahan {h:.1f}s di detik sumber {best[1]:.1f}')
   f=1.0;O=K;pad=max(0,T-O);waktu.append(t+0.3);rencana.append((iv,f,pad));t+=O+pad
 seg_out=[(seg[0],1.0,0)]+rencana+[([(akhir_cover,min(DUR,akhir_cover+3.0))],1.0,0)]
 TOTAL=t+3.0
