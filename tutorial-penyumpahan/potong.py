@@ -3,7 +3,10 @@ Bagian layar diam dipadatkan, tiap langkah dipercepat seperlunya agar pas dengan
 Pakai: python3 potong.py  ->  Tutorial-Dokumen-Penyumpahan-Narasi.mp4"""
 import json,subprocess,wave,numpy as np,imageio_ffmpeg
 FF=imageio_ffmpeg.get_ffmpeg_exe();SRC='Tutorial-Dokumen-Penyumpahan.mp4';OUT='Tutorial-Dokumen-Penyumpahan-Narasi.mp4'
-TEMPO=1.0;FPS=10;DIAM=1.0;SISA=0.5  # tanpa percepatan: narasi & video diputar kecepatan asli
+TEMPO=1.0;FPS=10;DIAM=1.0;SISA=0.5
+# tahan layar: langkah -> (detik sumber yang ditahan, detik narasi mulai & selesai membahasnya)
+# langkah 8: kartu surat dengan tombol 'Ambil nomor SPS' ditahan selama penjelasan nomor SPS
+TAHAN={8:(119.5,4.8,25.0)}  # tanpa percepatan: narasi & video diputar kecepatan asli
 def raw(vf,h,w,c=1):
   b=subprocess.run([FF,'-loglevel','error','-i',SRC,'-vf',f'fps={FPS},'+vf,'-f','rawvideo','-pix_fmt','gray' if c==1 else 'rgb24','-'],capture_output=True).stdout
   return np.frombuffer(b,np.uint8).reshape(-1,h,w,c).astype(int)
@@ -48,6 +51,12 @@ for k in range(11):
       iv2=padat(batas[k],batas[k+1],ss,d);K2=sum(y-x for x,y in iv2)
       if K2<T: break
       iv,K=iv2,K2
+  if k+1 in TAHAN:
+    src,c0,c1=TAHAN[k+1];iv=padat(batas[k],batas[k+1])
+    sb=[(x,min(y,src)) for x,y in iv if x<src];ss_=[(max(x,src),y) for x,y in iv if y>src]
+    Kb=sum(y-x for x,y in sb);h=max(0,(0.3+c1-vo[k][0])-Kb)
+    print(f'langkah {k+1}: layar SPS tampil {Kb:.1f}s setelah awal langkah (narasi SPS mulai {0.3+c0-vo[k][0]:.1f}s), ditahan {h:.1f}s')
+    iv=sb[:-1]+[(sb[-1][0],sb[-1][1],h)]+ss_;K=sum(y-x for x,y,*_ in iv)+h
   f=1.0;O=K;pad=max(0,T-O);waktu.append(t+0.3);rencana.append((iv,f,pad));t+=O+pad
 seg_out=[(seg[0],1.0,0)]+rencana+[([(akhir_cover,min(DUR,akhir_cover+3.0))],1.0,0)]
 TOTAL=t+3.0
@@ -55,24 +64,26 @@ def keluaran(src):
   """waktu di video hasil untuk detik `src` di video sumber"""
   o=0.0
   for iv,f,pad in seg_out:
-    for x,y in iv:
+    for x,y,*hh in iv:
       if src<x: return o
       if src<y: return o+(src-x)/f
-      o+=(y-x)/f
+      o+=(y-x)/f+sum(hh)
     o+=pad
   return o
 lebar=lambda p:int.from_bytes(open(p,'rb').read()[16:20],'big')
 # (gambar, mulai, selesai, x-tengah, y): link di langkah 1, catatan manual di langkah 4, kontak di akhir
 KARTU=[('kartu1.png',keluaran(mulai[0])+1.0,keluaran(mulai[1])+0.9,1700,350,0.3),  # keterangan langkah 1 versi baru (kartu1.js)
        ('link.png',waktu[0]+3.0,waktu[1]-0.4,770,850),('manual.png',waktu[3]+0.5,waktu[4]-0.4,770,895),
+       ('sps.png',waktu[7]+TAHAN[8][1]-vo[7][0],waktu[7]+TAHAN[8][2]-vo[7][0],890,140),
        ('kontak.png',waktu[10]+vo[10][2]-5.0,TOTAL,960,820)]
 # 5) filter ffmpeg
 chains=[];lab=[]
 n=sum(len(s[0]) for s in seg_out);chains.append(f"[0:v]split={n}"+''.join(f'[s{i}]' for i in range(n)))
 i=0
 for iv,f,pad in seg_out:
-  for j,(x,y) in enumerate(iv):
-    tp=f",tpad=stop_mode=clone:stop_duration={pad:.2f}" if pad>0 and j==len(iv)-1 else ''
+  for j,(x,y,*hh) in enumerate(iv):
+    tahan=sum(hh)+(pad if j==len(iv)-1 else 0)
+    tp=f",fps=30,tpad=stop_mode=clone:stop_duration={tahan:.2f}" if tahan>0 else ''
     chains.append(f"[s{i}]trim={x:.2f}:{y:.2f},setpts=(PTS-STARTPTS)/{f:.3f}{tp}[c{i}]");lab.append(f'[c{i}]');i+=1
 chains.append(''.join(lab)+f"concat=n={n}:v=1:a=0,fps=30[vc]")
 vin='[vc]'
