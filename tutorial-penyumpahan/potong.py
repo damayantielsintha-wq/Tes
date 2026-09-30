@@ -23,7 +23,7 @@ def padat(a,b,SISA=SISA):
     if not akt[i]:
       j=i
       while j<e and not akt[j]: j+=1
-      if (j-i)/FPS>DIAM: out.append((s/FPS,(i/FPS)+SISA));s=j
+      if (j-i)/FPS>DIAM: out.append((s/FPS,min(j,i+int(SISA*FPS))/FPS));s=j
       i=j
     else:i+=1
   if e>s: out.append((s/FPS,e/FPS))
