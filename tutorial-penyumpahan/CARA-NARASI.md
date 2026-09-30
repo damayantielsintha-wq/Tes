@@ -9,3 +9,5 @@ Versi ringkas (~2 menit, dipakai sekarang) dari video yang sudah ada, tanpa mere
 `node link.js` dan `node kartu1.js` (kartu teks; kartu1.js butuh `python3 -m http.server 8766`) lalu `python3 potong.py`. Skrip ini mendeteksi awal tiap langkah dari
 progress bar, memadatkan layar yang diam, menyelaraskan narasi (tanpa percepatan), dan membuat musik (`musik.py`).
 Buat ulang satu narasi saja: `ONLY=1 python3 tts.py`.
+
+Logo Pengayoman: `logo-pengayoman.png` dipakai di stage.html; `node logo.js` membuat logo-header.png, cover-buka.png, cover-tutup.png yang ditempel potong.py.

@@ -90,7 +90,11 @@ def keluaran(src):
   return o
 lebar=lambda p:int.from_bytes(open(p,'rb').read()[16:20],'big')
 # (gambar, mulai, selesai, x-tengah, y): link di langkah 1, catatan manual di langkah 4, kontak di akhir
-KARTU=[('kartu1.png',keluaran(mulai[0])+1.0,keluaran(mulai[1])+0.9,1700,350,0.3),  # keterangan langkah 1 versi baru (kartu1.js)
+# logo Pengayoman (logo.js): layar pembuka/penutup ditimpa versi berlogo, kotak logo di header dipasang di antaranya
+T_BUKA=keluaran(mulai[0]-1.5);T_BUKA_END=T_BUKA+1.0;T_TUTUP=keluaran(akhir_cover)
+KARTU=[('logo-header.png',T_BUKA_END-0.3,T_TUTUP+0.2,68,22,0.3),
+       ('cover-buka.png',0,T_BUKA+1.0,960,0,0.4),('cover-tutup.png',T_TUTUP+0.3,TOTAL,960,0,0.4),
+       ('kartu1.png',keluaran(mulai[0])+1.0,keluaran(mulai[1])+0.9,1700,350,0.3),  # keterangan langkah 1 versi baru (kartu1.js)
        ('link.png',waktu[0]+3.0,waktu[1]-0.4,770,850),('manual.png',waktu[3]+0.5,waktu[4]-0.4,770,895),
        ('sps.png',waktu[7]+TAHAN[8][1]-vo[7][0],waktu[7]+TAHAN[8][2]-vo[7][0],890,140),
        ('kontak.png',waktu[10]+vo[10][2]-5.0,TOTAL,960,820)]
@@ -107,7 +111,7 @@ chains.append(''.join(lab)+f"concat=n={n}:v=1:a=0,fps=30[vc]")
 vin='[vc]'
 for j,(png,a,b,xc,y,*fd) in enumerate(KARTU):
   fd=fd[0] if fd else 0.5
-  chains.append(f"[{j+1}:v]format=rgba,fade=t=in:st={a:.2f}:d={fd}:alpha=1,fade=t=out:st={b-fd:.2f}:d={fd}:alpha=1[k{j}]")
+  chains.append(f"[{j+1}:v]format=rgba,setpts=PTS-STARTPTS+{a:.3f}/TB,{'' if a<=0.01 else f'fade=t=in:st={a:.2f}:d={fd}:alpha=1,'}fade=t=out:st={b-fd:.2f}:d={fd}:alpha=1[k{j}]")
   vout='[v]' if j==len(KARTU)-1 else f'[o{j}]'
   chains.append(f"{vin}[k{j}]overlay=x={xc-lebar(png)//2}:y={y}:enable='between(t,{a:.2f},{b:.2f})'{vout}");vin=vout
 NK=len(KARTU)
@@ -116,7 +120,7 @@ for k,(s,e,_) in enumerate(vo):
 chains.append(f"[{NK+1}:a]volume=0.12[m]");chains.append(''.join(f'[a{k}]' for k in range(11))+"[m]amix=inputs=12:normalize=0,alimiter=limit=0.89[a]")
 subprocess.run(['python3','musik.py',str(TOTAL)],check=True)
 cmd=[FF,'-y','-loglevel','error','-i',SRC]
-for png,*_ in KARTU: cmd+=['-loop','1','-framerate','30','-t',f'{TOTAL:.2f}','-i',png]
+for png,a,b,*_ in KARTU: cmd+=['-loop','1','-framerate','30','-t',f'{max(0.1,b-a)+0.1:.2f}','-i',png]  # tiap kartu hanya selama waktu tampilnya (hemat memori)
 cmd+=['-i','music.wav']
 for k in range(11): cmd+=['-i',f'vo/{k+1:02d}.wav']
 cmd+=['-filter_complex',';'.join(chains),'-map','[v]','-map','[a]','-t',f'{TOTAL:.2f}','-c:v','libx264','-crf','20','-pix_fmt','yuv420p','-c:a','aac','-b:a','192k','-movflags','+faststart',OUT]
