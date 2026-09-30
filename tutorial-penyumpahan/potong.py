@@ -3,7 +3,7 @@ Bagian layar diam dipadatkan, tiap langkah dipercepat seperlunya agar pas dengan
 Pakai: python3 potong.py  ->  Tutorial-Dokumen-Penyumpahan-Narasi.mp4"""
 import json,subprocess,wave,numpy as np,imageio_ffmpeg
 FF=imageio_ffmpeg.get_ffmpeg_exe();SRC='Tutorial-Dokumen-Penyumpahan.mp4';OUT='Tutorial-Dokumen-Penyumpahan-Narasi.mp4'
-TEMPO=1.1;FPS=10;DIAM=1.0;SISA=0.5;MAXCEPAT=1.6
+TEMPO=1.0;FPS=10;DIAM=1.0;SISA=0.5  # tanpa percepatan: narasi & video diputar kecepatan asli
 def raw(vf,h,w,c=1):
   b=subprocess.run([FF,'-loglevel','error','-i',SRC,'-vf',f'fps={FPS},'+vf,'-f','rawvideo','-pix_fmt','gray' if c==1 else 'rgb24','-'],capture_output=True).stdout
   return np.frombuffer(b,np.uint8).reshape(-1,h,w,c).astype(int)
@@ -16,7 +16,7 @@ akhir_cover=(np.nonzero(kn>=kn.max()*0.9)[0][-1]+1)/FPS  # layar penutup mulai m
 DUR=len(kn)/FPS;assert len(mulai)==11,mulai
 # 2) frame aktif (ada gerakan)
 g=raw('scale=240:135,format=gray',135,240)[...,0];akt=np.r_[True,(np.abs(np.diff(g,axis=0))>10).sum((1,2))>3]
-def padat(a,b,SISA=SISA):
+def padat(a,b,SISA=SISA,DIAM=DIAM):
   """interval [a,b) dengan jeda diam >DIAM detik dipangkas jadi SISA detik"""
   out=[];i=int(a*FPS);e=int(b*FPS);s=i
   while i<e:
@@ -43,12 +43,28 @@ for k in range(11):
   for sisa in [SISA]+[round(SISA+0.1*j,1) for j in range(1,60)]+[99]:  # kalau video lebih pendek dari narasi, kurangi pemadatan jeda
     iv=padat(batas[k],batas[k+1],sisa);K=sum(y-x for x,y in iv)
     if K>=T: break
-  f=min(MAXCEPAT if sisa==SISA else 99,max(1.0,K/T));O=K/f;pad=max(0,T-O);waktu.append(t+0.3);rencana.append((iv,f,pad));t+=O+pad
+  if sisa==SISA:  # video lebih panjang dari narasi: padatkan jeda diam lebih ketat (tanpa mempercepat)
+    for d,ss in ((0.7,0.35),(0.5,0.25),(0.4,0.2)):
+      iv2=padat(batas[k],batas[k+1],ss,d);K2=sum(y-x for x,y in iv2)
+      if K2<T: break
+      iv,K=iv2,K2
+  f=1.0;O=K;pad=max(0,T-O);waktu.append(t+0.3);rencana.append((iv,f,pad));t+=O+pad
 seg_out=[(seg[0],1.0,0)]+rencana+[([(akhir_cover,min(DUR,akhir_cover+3.0))],1.0,0)]
 TOTAL=t+3.0
+def keluaran(src):
+  """waktu di video hasil untuk detik `src` di video sumber"""
+  o=0.0
+  for iv,f,pad in seg_out:
+    for x,y in iv:
+      if src<x: return o
+      if src<y: return o+(src-x)/f
+      o+=(y-x)/f
+    o+=pad
+  return o
 lebar=lambda p:int.from_bytes(open(p,'rb').read()[16:20],'big')
 # (gambar, mulai, selesai, x-tengah, y): link di langkah 1, catatan manual di langkah 4, kontak di akhir
-KARTU=[('link.png',waktu[0]+3.0,waktu[1]-0.4,770,850),('manual.png',waktu[3]+0.5,waktu[4]-0.4,770,895),
+KARTU=[('kartu1.png',keluaran(mulai[0])+1.0,keluaran(mulai[1])+0.9,1700,350,0.3),  # keterangan langkah 1 versi baru (kartu1.js)
+       ('link.png',waktu[0]+3.0,waktu[1]-0.4,770,850),('manual.png',waktu[3]+0.5,waktu[4]-0.4,770,895),
        ('kontak.png',waktu[10]+vo[10][2]-5.0,TOTAL,960,820)]
 # 5) filter ffmpeg
 chains=[];lab=[]
@@ -60,13 +76,14 @@ for iv,f,pad in seg_out:
     chains.append(f"[s{i}]trim={x:.2f}:{y:.2f},setpts=(PTS-STARTPTS)/{f:.3f}{tp}[c{i}]");lab.append(f'[c{i}]');i+=1
 chains.append(''.join(lab)+f"concat=n={n}:v=1:a=0,fps=30[vc]")
 vin='[vc]'
-for j,(png,a,b,xc,y) in enumerate(KARTU):
-  chains.append(f"[{j+1}:v]format=rgba,fade=t=in:st={a:.2f}:d=0.5:alpha=1,fade=t=out:st={b-0.5:.2f}:d=0.5:alpha=1[k{j}]")
+for j,(png,a,b,xc,y,*fd) in enumerate(KARTU):
+  fd=fd[0] if fd else 0.5
+  chains.append(f"[{j+1}:v]format=rgba,fade=t=in:st={a:.2f}:d={fd}:alpha=1,fade=t=out:st={b-fd:.2f}:d={fd}:alpha=1[k{j}]")
   vout='[v]' if j==len(KARTU)-1 else f'[o{j}]'
   chains.append(f"{vin}[k{j}]overlay=x={xc-lebar(png)//2}:y={y}:enable='between(t,{a:.2f},{b:.2f})'{vout}");vin=vout
 NK=len(KARTU)
 for k,(s,e,_) in enumerate(vo):
-  ms=int(waktu[k]*1000);chains.append(f"[{k+NK+2}:a]atrim={s:.2f}:{e:.2f},asetpts=PTS-STARTPTS,atempo={TEMPO},aresample=44100,adelay={ms}|{ms}[a{k}]")
+  ms=int(waktu[k]*1000);chains.append(f"[{k+NK+2}:a]atrim={s:.2f}:{e:.2f},asetpts=PTS-STARTPTS,aresample=44100,adelay={ms}|{ms}[a{k}]")
 chains.append(f"[{NK+1}:a]volume=0.12[m]");chains.append(''.join(f'[a{k}]' for k in range(11))+"[m]amix=inputs=12:normalize=0,alimiter=limit=0.89[a]")
 subprocess.run(['python3','musik.py',str(TOTAL)],check=True)
 cmd=[FF,'-y','-loglevel','error','-i',SRC]
