@@ -1,4 +1,4 @@
-"""Versi ringkas (~2 menit) dari Tutorial-Dokumen-Penyumpahan.mp4 + narasi vo/*.wav + link + musik.
+"""Versi ringkas (~2 menit) dari Tutorial-Dokumen-Penyumpahan.mp4 + narasi vo/*.wav + kartu teks + musik.
 Bagian layar diam dipadatkan, tiap langkah dipercepat seperlunya agar pas dengan narasinya.
 Pakai: python3 potong.py  ->  Tutorial-Dokumen-Penyumpahan-Narasi.mp4"""
 import json,subprocess,wave,numpy as np,imageio_ffmpeg
@@ -45,7 +45,11 @@ for k in range(11):
     if K>=T: break
   f=min(MAXCEPAT if sisa==SISA else 99,max(1.0,K/T));O=K/f;pad=max(0,T-O);waktu.append(t+0.3);rencana.append((iv,f,pad));t+=O+pad
 seg_out=[(seg[0],1.0,0)]+rencana+[([(akhir_cover,min(DUR,akhir_cover+3.0))],1.0,0)]
-TOTAL=t+3.0;link=(waktu[0]+3.0,waktu[1]-0.4)
+TOTAL=t+3.0
+lebar=lambda p:int.from_bytes(open(p,'rb').read()[16:20],'big')
+# (gambar, mulai, selesai, x-tengah, y): link di langkah 1, catatan manual di langkah 4, kontak di akhir
+KARTU=[('link.png',waktu[0]+3.0,waktu[1]-0.4,770,850),('manual.png',waktu[3]+0.5,waktu[4]-0.4,770,895),
+       ('kontak.png',waktu[10]+vo[10][2]-5.0,TOTAL,960,820)]
 # 5) filter ffmpeg
 chains=[];lab=[]
 n=sum(len(s[0]) for s in seg_out);chains.append(f"[0:v]split={n}"+''.join(f'[s{i}]' for i in range(n)))
@@ -55,13 +59,19 @@ for iv,f,pad in seg_out:
     tp=f",tpad=stop_mode=clone:stop_duration={pad:.2f}" if pad>0 and j==len(iv)-1 else ''
     chains.append(f"[s{i}]trim={x:.2f}:{y:.2f},setpts=(PTS-STARTPTS)/{f:.3f}{tp}[c{i}]");lab.append(f'[c{i}]');i+=1
 chains.append(''.join(lab)+f"concat=n={n}:v=1:a=0,fps=30[vc]")
-chains.append(f"[1:v]format=rgba,fade=t=in:st={link[0]:.2f}:d=0.5:alpha=1,fade=t=out:st={link[1]-0.5:.2f}:d=0.5:alpha=1[lk]")
-chains.append(f"[vc][lk]overlay=x=385:y=850:enable='between(t,{link[0]:.2f},{link[1]:.2f})'[v]")
+vin='[vc]'
+for j,(png,a,b,xc,y) in enumerate(KARTU):
+  chains.append(f"[{j+1}:v]format=rgba,fade=t=in:st={a:.2f}:d=0.5:alpha=1,fade=t=out:st={b-0.5:.2f}:d=0.5:alpha=1[k{j}]")
+  vout='[v]' if j==len(KARTU)-1 else f'[o{j}]'
+  chains.append(f"{vin}[k{j}]overlay=x={xc-lebar(png)//2}:y={y}:enable='between(t,{a:.2f},{b:.2f})'{vout}");vin=vout
+NK=len(KARTU)
 for k,(s,e,_) in enumerate(vo):
-  ms=int(waktu[k]*1000);chains.append(f"[{k+3}:a]atrim={s:.2f}:{e:.2f},asetpts=PTS-STARTPTS,atempo={TEMPO},aresample=44100,adelay={ms}|{ms}[a{k}]")
-chains.append("[2:a]volume=0.12[m]");chains.append(''.join(f'[a{k}]' for k in range(11))+"[m]amix=inputs=12:normalize=0,alimiter=limit=0.89[a]")
+  ms=int(waktu[k]*1000);chains.append(f"[{k+NK+2}:a]atrim={s:.2f}:{e:.2f},asetpts=PTS-STARTPTS,atempo={TEMPO},aresample=44100,adelay={ms}|{ms}[a{k}]")
+chains.append(f"[{NK+1}:a]volume=0.12[m]");chains.append(''.join(f'[a{k}]' for k in range(11))+"[m]amix=inputs=12:normalize=0,alimiter=limit=0.89[a]")
 subprocess.run(['python3','musik.py',str(TOTAL)],check=True)
-cmd=[FF,'-y','-loglevel','error','-i',SRC,'-loop','1','-framerate','30','-t',f'{TOTAL:.2f}','-i','link.png','-i','music.wav']
+cmd=[FF,'-y','-loglevel','error','-i',SRC]
+for png,*_ in KARTU: cmd+=['-loop','1','-framerate','30','-t',f'{TOTAL:.2f}','-i',png]
+cmd+=['-i','music.wav']
 for k in range(11): cmd+=['-i',f'vo/{k+1:02d}.wav']
 cmd+=['-filter_complex',';'.join(chains),'-map','[v]','-map','[a]','-t',f'{TOTAL:.2f}','-c:v','libx264','-crf','20','-pix_fmt','yuv420p','-c:a','aac','-b:a','192k','-movflags','+faststart',OUT]
 subprocess.run(cmd,check=True)
