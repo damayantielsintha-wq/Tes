@@ -4,3 +4,6 @@ Syarat: env `GEMINI_API_KEY` di environment sesi.
 2. Siapkan lib: `mkdir lib && cd lib && for p in pdfjs-dist@3.11.174 jszip@3.10.1 html2canvas@1.4.1; do npm pack $p; done && for f in *.tgz; do tar xzf $f && mv package ${f%.tgz}; done`
 3. `python3 -m http.server 8766 &` lalu `node record2.js` (tiap langkah menunggu narasinya selesai).
 4. Buat `music.wav` (musik latar), lalu `./gabung.sh` menghasilkan `Tutorial-Dokumen-Penyumpahan-Narasi.mp4`.
+
+Tanpa merekam ulang: pakai video yang sudah ada sebagai sumber, dengan `vo/waktu.json` berisi detik mulai tiap narasi
+(diselaraskan dengan progress bar langkah di video): `VIDEO=Tutorial-Dokumen-Penyumpahan.mp4 ./gabung.sh`.
